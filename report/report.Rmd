@@ -1,0 +1,248 @@
+---
+title: "External Shocks and Internal Signals"
+subtitle: "A Multi-Source Study of Hotel Cancellation Risk and Demand Volatility in Portuguese Hospitality (2015–2017)"
+author: "[Your Name]"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    theme: flatly
+    code_folding: hide
+    df_print: paged
+  pdf_document:
+    toc: true
+    number_sections: true
+bibliography: references.bib
+csl: apa.csl
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  fig.width = 7,
+  fig.height = 4.5,
+  out.width = "85%"
+)
+library(here)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+```
+
+# Abstract {-}
+
+> *Target ≤250 words. Fill in once Results §6 is final.*
+>
+> One sentence each on: motivation, dataset, primary methods (Negative
+> Binomial regression on weekly counts; Elastic Net logistic on
+> individual bookings; Random Forest cross-check; k-means
+> segmentation; residual-based anomaly detection), headline finding,
+> practical implication.
+
+---
+
+# Introduction
+
+Hotels lose 8–15% of gross revenue to cancellations net of rebookings. Standard analyses of the Hotel Booking Demand (HBD) dataset frame the problem as binary classification on intrinsic booking features alone, treating each booking as a closed system. This study widens the frame: we ask how much of cancellation variance is behavioral (who the customer is) versus contextual (what was happening when they booked).
+
+*Roadmap.* §2 reviews prior work. §3 describes the data and the methodological move of separating booking-date and arrival-date joins. §4 lists the research questions. §5 specifies methodology with each method pinned to one of four numbered RQs. §6 presents results per RQ. §7 discusses cross-method consistency. §8 lists limitations.
+
+# Related Work
+
+The HBD dataset was introduced by Antonio, Almeida and Nunes (2019) and has since been the subject of dozens of public Kaggle analyses, most of which treat cancellation as a binary classification problem on intrinsic booking features. *Discuss 2–3 specific prior analyses and what they miss.*
+
+Methodological references: Cameron and Trivedi (1998) on Negative Binomial regression; Zou and Hastie (2005) on Elastic Net; Breiman (2001) on Random Forests; Hennig (2007) on bootstrap cluster stability.
+
+# Data Description
+
+## Primary dataset
+
+The Hotel Booking Demand dataset [@antonio2019hotel] covers two Portuguese hotels (one resort in the Algarve, one city hotel in Lisbon) from July 2015 to August 2017. After cleaning, *n* = 119,390 bookings remain.
+
+```{r missingness, fig.cap = "Missingness in selected HBD columns."}
+include_graphics(here("report", "figures", "F02_missingness.png"))
+```
+
+## External data
+
+We supplement HBD with two external sources:
+
+1. **Public holidays** from the `nager.Date` API for six countries (PRT, GBR, FRA, ESP, DEU, IRL) covering 2015–2017.
+2. **Curated event timeline** of 2015–2017 shocks relevant to Portuguese tourism — Brexit referendum (23 June 2016), Euro 2016 (10 June – 10 July 2016), the Pedrógão Grande wildfires (June 2017), Iberian heatwaves of August 2016 and 2017.
+
+## Two time anchors
+
+The core methodological move: HBD records arrival date and lead time, so we reconstruct `booking_date = arrival_date - lead_time`. Each booking is then joined to external data on **both** time anchors:
+
+- *Booking-date joins* capture information the customer had when deciding.
+- *Arrival-date joins* capture consumption-window conditions.
+
+Most prior HBD analyses conflate these. We separate them, which lets us distinguish (for example) a booking made during a UK holiday in 2016 from one for arrival during a UK holiday in 2016.
+
+# Research Questions
+
+1. **RQ1.** What fraction of cancellation variance is explained by customer/booking attributes versus contextual signals?
+2. **RQ2.** What drives weekly cancellation counts — booking volume, customer mix, or contextual conditions?
+3. **RQ3.** Do latent behavioral segments respond differently to the same contextual conditions?
+4. **RQ4.** Can we identify anomalous weeks from model residuals alone, and do they align with known events?
+
+# Methodology
+
+## Elastic Net logistic regression (RQ1)
+
+Once context features are added, predictors become correlated and plain logistic regression yields unstable coefficients. Elastic Net handles this via regularization plus automatic variable selection. We fit two nested models — behavioral-only and behavioral + context — and compare held-out AUC, PR-AUC, and Brier score. The Δ between them is the contextual-signal contribution.
+
+We use a 5-fold cross-validation on `lambda` with `alpha = 0.5`, on a **temporal** split (training: bookings before 2017-01-01; test: 2017-01-01 to 2017-08-31). Random k-fold would leak future information into past predictions, which the temporal split prevents.
+
+## Negative Binomial regression (RQ2, headline)
+
+Weekly cancellation counts are overdispersed because bookings within a week share contextual drivers. Poisson assumes equidispersion and would underestimate standard errors; quasi-Poisson handles dispersion via a scalar but lacks a full likelihood. Negative Binomial (NB2) has `Var(Y) = μ + μ²/θ`, which matches the data-generating process. The dispersion parameter `θ` is itself interpretable as "week-to-week unpredictability."
+
+The model:
+
+$$
+\log E[Y_w] = \alpha + \mathbf{x}_w^\top \boldsymbol\beta + \log(\text{bookings}_w)
+$$
+
+where `log(bookings_w)` enters as an offset so the model is implicitly a *rate* model. We test NB against Poisson via a likelihood-ratio test on `θ`.
+
+## Random Forest cross-check (RQ1 supplement)
+
+Non-parametric agreement: if RF permutation importance ranks the same features as Elastic Net selects, the inferential story is more credible. We also use the RF partial dependence plot for `lead_time` as a visual replacement for a GAM smooth.
+
+RF is not the headline because RQ1 and RQ2 need interpretable coefficients with confidence intervals.
+
+## k-means clustering (RQ3)
+
+Five standardized numeric behavioral features (`prior_cancel_rate`, `commitment_score`, `booking_complexity`, `lead_time`, `adr`). `k` chosen by elbow + silhouette, validated by bootstrap stability (`fpc::clusterboot`, Jaccard ≥ 0.6 per cluster). The categorical channel (`market_segment`, `distribution_channel`) is recovered post-hoc by cross-tabulating clusters against categories.
+
+Segment × `event_active_week` interaction is tested in the NB model; this is the formal test of whether segmentation is statistically informative beyond description.
+
+## Anomaly detection (RQ4)
+
+A week is "anomalous" not when its features are unusual (Isolation Forest's definition) but when the *outcome* is unusual given the features. We define anomalies as `|deviance residual| > 2` from the NB model. No new model is fitted — anomalies inherit the NB structure. Validation: precision against the curated event timeline, with discussion of false positives.
+
+## What we are not doing (and why)
+
+- *Cox proportional hazards* — survival theory + new package + censoring management is too much new content to defend in the available time.
+- *GAM* — replaced by polynomial lead-time term plus RF partial dependence.
+- *PCA* — no defensible use remains after dropping monthly tourism-arrival data.
+- *Isolation Forest* — replaced by NB-residual anomaly detection.
+- *Deep learning* — sample size and inferential goals do not justify it.
+
+# Results
+
+## RQ1: behavioral vs. contextual drivers
+
+```{r enet-coefs, fig.cap = "Elastic Net standardized coefficients (top 15 by |β|). Red = increases cancellation risk, blue = decreases."}
+include_graphics(here("report", "figures", "F04_enet_coefs.png"))
+```
+
+```{r rf-importance, fig.cap = "Random Forest permutation importance (cross-check)."}
+include_graphics(here("report", "figures", "F05_rf_importance.png"))
+```
+
+*Discuss: do RF and Elastic Net agree on top features? Quantify behavioral → behavioral+context Δ AUC and Δ Brier.*
+
+```{r pdp, fig.cap = "Partial dependence: lead time → predicted cancellation probability. Dashed line: unconditional rate."}
+include_graphics(here("report", "figures", "F06_pdp_lead_time.png"))
+```
+
+*Comment on nonlinearity — is there a threshold or kink?*
+
+## RQ2: weekly cancellation count drivers
+
+```{r nb-pred, fig.cap = "Negative Binomial observed vs. predicted weekly cancellations on held-out 2017 weeks."}
+include_graphics(here("report", "figures", "F07_nb_observed_vs_predicted.png"))
+```
+
+```{r nb-irr, fig.cap = "Incidence rate ratios from the NB model (95% CIs, log scale)."}
+include_graphics(here("report", "figures", "F08_nb_irr_forest.png"))
+```
+
+*Report: NB θ with SE; Poisson dispersion comparison; LRT p-value confirming overdispersion; held-out RMSE/MAE; Cragg-Uhler pseudo-R².*
+
+## RQ3: behavioral segmentation
+
+```{r elbow, fig.cap = "k-means within-cluster sum of squares by k."}
+include_graphics(here("report", "figures", "F09a_elbow.png"))
+```
+
+*Discuss chosen k, cluster profiles, bootstrap Jaccard per cluster. Cross-tab clusters vs. market segment. Report segment × event interaction p-value from the NB model — if not significant, say so.*
+
+```{r cluster-profile, results = "asis"}
+# km <- readRDS(here("data", "processed", "model_kmeans.rds"))
+# kable(km$profile, caption = "Cluster profiles") |> kable_styling()
+```
+
+## RQ4: anomalous weeks
+
+```{r anom, fig.cap = "NB deviance residuals over time. Red = anomaly (|r| > 2). Dotted red verticals = curated events."}
+include_graphics(here("report", "figures", "F11_anomalies.png"))
+```
+
+*Report: number of anomalies, precision vs. curated events, top 5 anomalies with hand-written explanation of each.*
+
+# Discussion
+
+*Cross-method consistency: do Elastic Net top features, RF importance, and NB IRRs tell the same story? Where do they disagree?*
+
+*Practical implications: what does this mean for the hotel's deposit policy, overbooking, and dynamic pricing?*
+
+*Honest reporting of any null result — particularly for the segment × context interaction if it is not significant.*
+
+# Limitations
+
+- Only two hotels, both in Portugal — generalization unproven.
+- 2015–2017 window precedes COVID; the dispersion parameter would likely change radically.
+- Anomaly detection has no ground truth; precision against the curated event list is qualitative.
+- External data scope was deliberately minimal (holidays + curated events). A richer macro feed (Eurostat, INE, ECB, weather) was scoped out of this project but would strengthen the contextual story.
+- Country-level holiday flags assume all bookings from a country share the same calendar — this misses regional variation (e.g., Scotland vs. England).
+
+# Conclusion
+
+*One paragraph restating the headline finding, the methodological contribution (booking-date vs. arrival-date separation, dual modeling at individual and aggregate scales), and the dashboard.*
+
+# Future Work
+
+- Post-COVID replication: how does `θ` change under a regime with shock events?
+- Causal identification: difference-in-differences around Brexit and Euro 2016, using non-EU source countries as a control.
+- Real-time scoring: deploy the Elastic Net model as a Plumber API for booking-time risk assessment.
+- Richer external data: integrate ECB FX rates, Eurostat consumer confidence, and weather data once timeline permits.
+
+# Appendix
+
+## Variable codebook
+
+*Table mapping each engineered variable to its definition, type, and source script.*
+
+## Diagnostic plots
+
+- NB residuals vs. fitted, residuals vs. time
+- Elastic Net regularization path and CV curve
+- Schoenfeld-style stability checks for k-means (already in §6.3 via Jaccard)
+
+## Reproducibility
+
+```{r session-info, results = "asis"}
+cat("```\n")
+print(sessionInfo())
+cat("\n```\n")
+```
+
+Source code: see `R/` directory. Seeds set to `2026` in every modeling script. Dependency versions pinned in `renv.lock`.
+
+# References {-}
+
+*Maintain a `references.bib` file with at minimum:*
+- Antonio, Almeida, Nunes (2019) — HBD dataset paper
+- Cameron, Trivedi (1998) — Regression Analysis of Count Data
+- Zou, Hastie (2005) — Elastic Net paper
+- Breiman (2001) — Random Forests
+- Hennig (2007) — Cluster-wise assessment of cluster stability

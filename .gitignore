@@ -1,0 +1,38 @@
+# Data — raw CSV not committed (size + licensing); other raw + processed cached locally
+data/raw/hotel_bookings.csv
+data/processed/*.rds
+data/raw/holidays/*.json
+
+# R session artifacts
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# renv library (lock file IS committed)
+renv/library/
+renv/staging/
+renv/python/
+renv/local/
+
+# Knit artifacts
+report/report.html
+report/report.pdf
+report/*_files/
+report/*_cache/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Outputs we'd rather regenerate
+session_info_setup.txt
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+venv/
+.venv/
+.idea/
+.DS_Store
+.Rhistory
+.RData

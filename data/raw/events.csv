@@ -1,0 +1,8 @@
+event_id,event_name,start_date,end_date,description,expected_effect
+brexit_referendum,Brexit referendum,2016-06-23,2016-06-23,UK referendum on EU membership; Leave wins,Possible cancellation surge from UK source market due to GBP collapse
+euro_2016,UEFA Euro 2016,2016-06-10,2016-07-10,Football championship in France; Portugal wins on 10 July,Possible booking surge for Portugal post-victory; pre-tournament UK/FR distraction
+portugal_euro_celebration,Portugal Euro victory aftermath,2016-07-11,2016-08-31,Domestic celebration; tourism marketing boost,Possible positive booking shock for July-August 2016
+pedrogao_grande_fires,Pedrógão Grande wildfires,2017-06-17,2017-06-24,Devastating forest fires in central Portugal; international news coverage,Cancellation risk for arrivals in late June / early July 2017
+august_2016_heatwave,August 2016 Iberian heatwave,2016-08-26,2016-09-07,Iberian peninsula heat extreme; multiple records broken,Possible cancellation risk for resort hotel (Algarve)
+august_2017_heatwave,August 2017 Iberian heatwave,2017-08-01,2017-08-08,Severe Iberian heat episode,Possible cancellation risk for arrivals in early August 2017
+catalonia_referendum_buildup,Catalonia independence referendum buildup,2017-09-01,2017-10-01,Political tension in neighboring Spain (post-dataset),Mostly outside dataset window but useful for boundary check
